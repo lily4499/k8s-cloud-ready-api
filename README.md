@@ -1,4 +1,4 @@
-## 10. How to Talk About This Project in an Interview
+Kubernetes Cloud-Ready API” (Python FastAPI + Terraform + EKS/AKS)
 
 > "I built and deployed a production-style Python FastAPI API on AWS EKS using Terraform for all the infrastructure (VPC, subnets, EKS cluster, node group). I containerized the app with Docker, scanned images with Trivy before pushing them to ECR, and deployed to Kubernetes using Deployment, Service, and ALB-backed Ingress.
 > For observability, I installed the kube-prometheus-stack (Prometheus, Grafana, Alertmanager) and configured Slack alerts for key conditions like high pod restarts or CPU usage. I also created a Jenkins pipeline to automate build → scan → push → deploy."
