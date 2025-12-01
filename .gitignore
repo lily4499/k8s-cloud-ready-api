@@ -1,0 +1,37 @@
+full-values.yaml
+notes.txt
+
+
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+
+
+# ---- Python ----
+app/venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+
+# Environment files
+.env
+.env.*
+
+# ---- Terraform ----
+infra/.terraform/               # provider binaries, plugins, etc.
+infra/.terraform.tfstate.lock.info
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+infra/tfplan
+crash.log
+*.tfvars
+*.tfvars.json
+
+# ---- IDE / OS junk ----
+.vscode/
+.idea/
+*.iml
+.DS_Store
+

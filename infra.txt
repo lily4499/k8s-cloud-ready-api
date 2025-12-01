@@ -1,0 +1,343 @@
+
+* `variables.tf`
+* `providers.tf`
+* `vpc.tf`
+* `eks.tf`
+* `outputs.tf`
+
+---
+
+## `variables.tf`
+
+```hcl
+variable "project_name" {
+  type    = string
+  default = "cloud-ready-api"
+}
+
+variable "region" {
+  type    = string
+  default = "us-east-1"
+}
+```
+
+---
+
+## `providers.tf`
+
+```hcl
+terraform {
+  required_version = ">= 1.5.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.region
+}
+```
+
+---
+
+## `vpc.tf`
+
+(✅ 1 public + 1 private subnet, everything prefixed with `project_name` in tags/names)
+
+```hcl
+# VPC
+resource "aws_vpc" "eks_vpc" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
+  tags = {
+    Name = "${var.project_name}-vpc"
+  }
+}
+
+# Internet Gateway
+resource "aws_internet_gateway" "eks_igw" {
+  vpc_id = aws_vpc.eks_vpc.id
+
+  tags = {
+    Name = "${var.project_name}-igw"
+  }
+}
+
+# ---------- Subnets (1 Public, 1 Private) ----------
+
+# Public subnet
+resource "aws_subnet" "eks_pub_sub" {
+  vpc_id                  = aws_vpc.eks_vpc.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "${var.region}a"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "${var.project_name}-public-subnet"
+  }
+}
+
+# Private subnet
+resource "aws_subnet" "eks_priv_sub" {
+  vpc_id            = aws_vpc.eks_vpc.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "${var.region}b"
+
+  tags = {
+    Name = "${var.project_name}-private-subnet"
+  }
+}
+
+# ---------- NAT + EIP ----------
+
+resource "aws_eip" "nat_eip" {
+  domain = "vpc"
+
+  tags = {
+    Name = "${var.project_name}-nat-eip"
+  }
+}
+
+resource "aws_nat_gateway" "eks_nat_gw" {
+  allocation_id = aws_eip.nat_eip.id
+  subnet_id     = aws_subnet.eks_pub_sub.id
+
+  tags = {
+    Name = "${var.project_name}-nat-gw"
+  }
+
+  depends_on = [aws_internet_gateway.eks_igw]
+}
+
+# ---------- Route Tables ----------
+
+resource "aws_route_table" "private_subnet_route_table" {
+  vpc_id = aws_vpc.eks_vpc.id
+
+  tags = {
+    Name = "${var.project_name}-rt-private"
+  }
+}
+
+resource "aws_route_table" "public_subnet_route_table" {
+  vpc_id = aws_vpc.eks_vpc.id
+
+  tags = {
+    Name = "${var.project_name}-rt-public"
+  }
+}
+
+# Routes
+resource "aws_route" "private_subnet_nat_gateway_route" {
+  route_table_id         = aws_route_table.private_subnet_route_table.id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.eks_nat_gw.id
+}
+
+resource "aws_route" "public_subnet_internet_gateway_route" {
+  route_table_id         = aws_route_table.public_subnet_route_table.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.eks_igw.id
+}
+
+# Associations – Public
+resource "aws_route_table_association" "public_subnet_route_table_association" {
+  subnet_id      = aws_subnet.eks_pub_sub.id
+  route_table_id = aws_route_table.public_subnet_route_table.id
+}
+
+# Associations – Private
+resource "aws_route_table_association" "private_subnet_route_table_association" {
+  subnet_id      = aws_subnet.eks_priv_sub.id
+  route_table_id = aws_route_table.private_subnet_route_table.id
+}
+```
+
+---
+
+## `eks.tf`
+
+(✅ All names prefixed with `project_name`: roles, cluster, node group)
+
+```hcl
+# ---------- IAM for EKS Cluster ----------
+
+resource "aws_iam_role" "eks_cluster_role" {
+  name = "${var.project_name}-eks-cluster-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "eks.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "eks_cluster_role_attachment" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+  role       = aws_iam_role.eks_cluster_role.name
+}
+
+# ---------- EKS Cluster ----------
+
+resource "aws_eks_cluster" "lili_cluster" {
+  name     = "${var.project_name}-cluster"
+  role_arn = aws_iam_role.eks_cluster_role.arn
+  version  = "1.26"
+
+  vpc_config {
+    subnet_ids = [
+      aws_subnet.eks_priv_sub.id,
+      aws_subnet.eks_pub_sub.id,
+    ]
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_cluster_role_attachment
+  ]
+}
+
+# ---------- IAM for Worker Nodes ----------
+
+resource "aws_iam_role" "eks_worker_node_role" {
+  name = "${var.project_name}-eks-node-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "eks_worker_node_policy_attachment" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+  role       = aws_iam_role.eks_worker_node_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "eks_cni_policy_attachment" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+  role       = aws_iam_role.eks_worker_node_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "eks_ec2CR_policy_attachment" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+  role       = aws_iam_role.eks_worker_node_role.name
+}
+
+# ---------- Node Group ----------
+
+resource "aws_eks_node_group" "eks_node" {
+  cluster_name    = aws_eks_cluster.lili_cluster.name
+  node_group_name = "${var.project_name}-node-group"
+  node_role_arn   = aws_iam_role.eks_worker_node_role.arn
+
+  subnet_ids = [
+    aws_subnet.eks_priv_sub.id
+  ]
+
+  scaling_config {
+    desired_size = 1
+    max_size     = 2
+    min_size     = 1
+  }
+
+  update_config {
+    max_unavailable = 1
+  }
+
+  ami_type       = "AL2_x86_64"
+  instance_types = ["t3.small"]
+  capacity_type  = "ON_DEMAND"
+
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_worker_node_policy_attachment,
+    aws_iam_role_policy_attachment.eks_cni_policy_attachment,
+    aws_iam_role_policy_attachment.eks_ec2CR_policy_attachment,
+  ]
+}
+```
+
+---
+
+## `outputs.tf`
+
+```hcl
+output "project_name" {
+  value       = var.project_name
+  description = "Project name prefix used for resources."
+}
+
+output "region" {
+  value       = var.region
+  description = "AWS region."
+}
+
+output "vpc_id" {
+  value       = aws_vpc.eks_vpc.id
+  description = "VPC ID."
+}
+
+output "public_subnet_id" {
+  value       = aws_subnet.eks_pub_sub.id
+  description = "Public subnet ID."
+}
+
+output "private_subnet_id" {
+  value       = aws_subnet.eks_priv_sub.id
+  description = "Private subnet ID."
+}
+
+output "eks_cluster_name" {
+  value       = aws_eks_cluster.lili_cluster.name
+  description = "EKS cluster name."
+}
+
+output "eks_cluster_endpoint" {
+  value       = aws_eks_cluster.lili_cluster.endpoint
+  description = "EKS API server endpoint."
+}
+
+output "eks_cluster_ca_certificate" {
+  value       = aws_eks_cluster.lili_cluster.certificate_authority[0].data
+  description = "Base64 encoded cluster CA certificate."
+}
+```
+
+---
+
+### How to run
+
+In the folder with all these files:
+
+```bash
+terraform init
+terraform plan
+terraform apply
+```
+
+If you want a different prefix:
+
+```bash
+terraform apply -var="project_name=my-eks-demo"
+```
+
+

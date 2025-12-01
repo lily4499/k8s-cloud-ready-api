@@ -1,0 +1,41 @@
+output "project_name" {
+  value       = var.project_name
+  description = "Project name prefix used for resources."
+}
+
+output "vpc_id" {
+  value       = aws_vpc.eks_vpc.id
+  description = "VPC ID used by the EKS cluster."
+}
+
+output "public_subnet_ids" {
+  value = [
+    aws_subnet.eks_pub_sub_one.id,
+    aws_subnet.eks_pub_sub_two.id
+  ]
+  description = "Public subnet IDs."
+}
+
+output "private_subnet_ids" {
+  value = [
+    aws_subnet.eks_priv_sub_one.id,
+    aws_subnet.eks_priv_sub_two.id
+  ]
+  description = "Private subnet IDs."
+}
+
+output "eks_cluster_name" {
+  value       = aws_eks_cluster.lili_cluster.name
+  description = "EKS cluster name."
+}
+
+output "eks_cluster_endpoint" {
+  value       = aws_eks_cluster.lili_cluster.endpoint
+  description = "EKS API server endpoint."
+}
+
+output "eks_cluster_ca_certificate" {
+  value       = aws_eks_cluster.lili_cluster.certificate_authority[0].data
+  description = "Base64 encoded CA certificate for the EKS cluster."
+}
+

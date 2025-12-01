@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloud-ready-api-svc
+  namespace: cloud-api
+  labels:
+    app: cloud-ready-api
+spec:
+  selector:
+    app: cloud-ready-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP

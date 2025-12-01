@@ -1,0 +1,63 @@
+alertmanager:
+  alertmanagerSpec:
+    useExistingSecret: true
+    configSecret: alertmanager-monitoring-config
+
+
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelector: {}
+    podMonitorSelector: {}
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+grafana:
+  adminPassword: "admin123"
+  service:
+    type: LoadBalancer
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+
+
+# # alertmanager:
+# #   enabled: true
+# #   # no custom config yet – use chart defaults
+
+# # prometheus:
+# #   prometheusSpec:
+# #     serviceMonitorSelector: {}
+# #     podMonitorSelector: {}
+
+# # kube-state-metrics:
+# #   resources:
+# #     requests:
+# #       cpu: 50m
+# #       memory: 64Mi
+
+# # prometheusOperator:
+# #   resources:
+# #     requests:
+# #       cpu: 50m
+# #       memory: 128Mi
+
+# # grafana:
+# #   adminPassword: "admin123"
+# #   service:
+# #     type: LoadBalancer
+# #   resources:
+# #     requests:
+# #       cpu: 50m
+# #       memory: 128Mi

@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-ready-api
+  namespace: cloud-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cloud-ready-api
+  template:
+    metadata:
+      labels:
+        app: cloud-ready-api
+    spec:
+      containers:
+        - name: cloud-ready-api
+          image: "laly9999/cloud-ready-api:1"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+
+
+
+
+
+
+
+
+
+
+
+
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: cloud-ready-api
+#   namespace: cloud-api
+# spec:
+#   replicas: 2
+#   selector:
+#     matchLabels:
+#       app: cloud-ready-api
+#   template:
+#     metadata:
+#       labels:
+#         app: cloud-ready-api
+#     spec:
+#       containers:
+#         - name: cloud-ready-api
+#           image: "637423529262.dkr.ecr.us-east-1.amazonaws.com/cloud-ready-api:1"
+#           imagePullPolicy: IfNotPresent
+#           ports:
+#             - containerPort: 8000
+#           readinessProbe:
+#             httpGet:
+#               path: /health
+#               port: 8000
+#             initialDelaySeconds: 5
+#             periodSeconds: 10
+#           livenessProbe:
+#             httpGet:
+#               path: /health
+#               port: 8000
+#             initialDelaySeconds: 15
+#             periodSeconds: 20
+#           resources:
+#             requests:
+#               cpu: "100m"
+#               memory: "128Mi"
+#             limits:
+#               cpu: "500m"
+#               memory: "256Mi"

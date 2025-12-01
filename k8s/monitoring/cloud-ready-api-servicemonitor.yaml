@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cloud-ready-api-sm
+  namespace: monitoring
+  labels:
+    release: monitoring            # IMPORTANT: must match Helm release name
+spec:
+  selector:
+    matchLabels:
+      app: cloud-ready-api         # matches Service label
+  namespaceSelector:
+    matchNames:
+      - cloud-api                  # namespace of your app
+  endpoints:
+    - port: http                   # matches Service port name
+      path: /metrics
+      interval: 15s
