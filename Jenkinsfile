@@ -9,7 +9,7 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        git branch: 'main', url: 'https://github.com/lily4499/day14-full-pipeline.git'
+        git branch: 'main', url: 'https://github.com/lily4499/k8s-cloud-ready-api.git'
       }
     }
 
@@ -18,7 +18,8 @@ pipeline {
         dir('app') {
           sh '''
             python3 -m venv venv
-            source venv/bin/activate
+            . venv/bin/activate
+            #source venv/bin/activate
             pip install -r requirements.txt
           '''
         }
