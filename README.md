@@ -9,7 +9,6 @@ This repository contains all the files referenced below; refer to each file in t
 
 ---
 
-````markdown
 # Kubernetes Cloud-Ready API on AWS EKS
 
 Python **FastAPI** backend deployed on **Amazon EKS** using:
