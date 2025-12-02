@@ -452,38 +452,100 @@ aws ecr delete-repository \
 ```
 
 ---
+# Steps to create ALB Controller
 
+# 1. Associate OIDC Provider
+eksctl utils associate-iam-oidc-provider \
+  --cluster $CLUSTER_NAME \
+  --region $AWS_REGION \
+  --approve
+
+# 2. Download AWS Load Balancer Controller IAM Policy
+curl -o iam-policy.json \
+  https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json
+
+# 3. Create IAM Policy
+aws iam create-policy \
+  --policy-name AWSLoadBalancerControllerIAMPolicy \
+  --policy-document file://iam-policy.json
+
+# 4. Create IAM Service Account for ALB Controller
+eksctl create iamserviceaccount \
+  --cluster $CLUSTER_NAME \
+  --region $AWS_REGION \
+  --namespace kube-system \
+  --name aws-load-balancer-controller \
+  --attach-policy-arn arn:aws:iam::$AWS_ACCOUNT_ID:policy/AWSLoadBalancerControllerIAMPolicy \
+  --approve
+
+# 5. Add Helm Repo
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+
+# 6. Install AWS Load Balancer Controller
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+  -n kube-system \
+  --set clusterName=$CLUSTER_NAME \
+  --set serviceAccount.create=false \
+  --set region=$AWS_REGION \
+  --set vpcId=$VPC_ID \
+  --set serviceAccount.name=aws-load-balancer-controller
+
+---
+
+# ✅ **Check if AWS Load Balancer Controller is Installed**
+
+```bash
+kubectl get deployment -n kube-system aws-load-balancer-controller
+```
+
+---
+
+# ✅ **Check Pod Status**
+
+```bash
+kubectl get pods -n kube-system | grep aws-load-balancer-controller
+```
+
+---
+
+# ✅ **Check Logs (verify it's running with no errors)**
+
+```bash
+kubectl logs -n kube-system deployment/aws-load-balancer-controller
+```
+
+---
 
 ---
 
 
 > **Challenge:**
-> The biggest challenge in this project was getting the application exposed correctly through **AWS ALB Ingress** on EKS.
+> When I was exposing a Kubernetes service through AWS ALB Ingress, the Ingress resource was created but no Application Load Balancer ever showed up in the AWS console. The Ingress stayed in a “pending” state with no clear error.
 >
-> Setting up the EKS cluster with Terraform was straightforward, but making the traffic flow from the internet → AWS ALB → Kubernetes Ingress → Service → Pods required a lot of small pieces to be correct:
+> **What was wrong:**
+> I had defined the annotations for the AWS Load Balancer Controller, but I forgot the most important field:
 >
-> * I had to understand how the **AWS Load Balancer Controller** works in Kubernetes.
-> * I needed to enable the **OIDC provider** for the EKS cluster and attach the correct IAM role and policies.
-> * My subnets needed the right tags so the ALB could attach to them.
-> * Then I had to make sure the Ingress annotations, `ingressClass`, and Service type were correctly configured.
+> ```yaml
+> spec:
+>   ingressClassName: alb
+> ```
 >
-> At first, the Ingress was created but the ALB either didn’t show up or stayed in a bad state. I used:
+> Without the correct `ingressClassName`, the controller completely ignored my Ingress, so nothing got provisioned.
 >
-> * `kubectl describe ingress` to check events
-> * AWS console logs for the load balancer
-> * Checked IAM permissions and OIDC configuration
+> **How I solved it:**
+> I checked `kubectl describe ingress` and the controller logs, realized the Ingress was not being picked up, added:
 >
-> **What I did to solve it:**
-> I went step by step:
+> ```yaml
+> spec:
+>   ingressClassName: alb
+> ```
 >
-> 1. Verified subnet tagging and security groups.
-> 2. Re-created the AWS Load Balancer Controller with the right IAM role and OIDC provider.
-> 3. Simplified the Ingress YAML to a minimal working example and then added paths.
+> re-applied the manifest, and then the ALB was created successfully and started routing traffic.
 >
-> Once it worked, I could hit `/health` and `/items` from the ALB DNS name over the internet.
->
-> **What I learned:**
-> This forced me to really understand how **Kubernetes networking and AWS networking fit together** – not just inside the cluster, but all the way from DNS, ALB, Ingress, Service, and Pods. It’s the kind of problem you also see in real production environments when something is “up” in Kubernetes but not reachable from outside.
+> **Lesson learned:**
+> Now, whenever I work with AWS Load Balancer Controller, I always double-check `ingressClassName: alb` first, because a missing or wrong ingress class can waste a lot of troubleshooting time.
+
 
 
 ---
