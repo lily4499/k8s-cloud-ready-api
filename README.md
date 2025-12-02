@@ -514,6 +514,185 @@ kubectl get pods -n kube-system | grep aws-load-balancer-controller
 ```bash
 kubectl logs -n kube-system deployment/aws-load-balancer-controller
 ```
+---
+---
+
+
+**files + steps + CLI** so that Slack works via a **webhook URL stored in a Secret** before you run:
+
+```bash
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  -n monitoring \
+  -f prometheus-values.yaml
+```
+
+---
+
+## 1️⃣ Create `monitoring` namespace
+
+**File: `monitoring-namespace.yaml`**
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+```
+
+**CLI**
+
+```bash
+kubectl apply -f monitoring-namespace.yaml
+```
+
+---
+
+## 2️⃣ Create Slack webhook & Secret
+
+### a) In Slack (one time in UI)
+
+1. In Slack, go to **Apps → “Incoming Webhooks”**.
+2. Add a new Incoming Webhook.
+3. Choose the channel, e.g. `#alerts`.
+4. Copy the **Webhook URL** (looks like `https://hooks.slack.com/services/...`).
+
+### b) Kubernetes Secret with webhook URL
+
+**File: `slack-webhook-secret.yaml`**
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: slack-api-url
+  namespace: monitoring
+stringData:
+  slack_api_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"   # <--- your real URL
+```
+
+> `stringData` lets you paste the URL as plain text; Kubernetes will base64-encode it.
+
+**CLI**
+
+```bash
+kubectl apply -f slack-webhook-secret.yaml
+```
+
+---
+
+## 3️⃣ Create Alertmanager config Secret (uses that webhook)
+
+This is the **Alertmanager configuration** that the Helm chart will load from a Secret.
+
+**File: `alertmanager-config.yaml`**
+
+Key points:
+
+* `api_url_file: /etc/alertmanager/secrets/slack-api-url/slack_api_url`
+  → This path is where the **Secret `slack-api-url`** will be mounted by the chart (we’ll wire that in `prometheus-values.yaml`).
+
+**CLI**
+
+```bash
+kubectl apply -f alertmanager-config.yaml
+```
+
+---
+
+## 4️⃣ Create a test alert rule so Slack gets a message
+
+**File: `test-alert-rule.yaml`**
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: test-alert-rule
+  namespace: monitoring
+  labels:
+    release: monitoring     # must match Helm release name
+spec:
+  groups:
+    - name: test.rules
+      rules:
+        - alert: TestAlwaysFiring
+          expr: vector(1)
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Test alert from Prometheus"
+            description: "This is a test alert that always fires."
+```
+
+**CLI**
+
+```bash
+kubectl apply -f test-alert-rule.yaml
+```
+
+---
+
+## 5️⃣ Helm values for kube-prometheus-stack
+
+This is the file you pass to `-f prometheus-values.yaml`.
+It tells the chart:
+
+* “Use my existing Alertmanager config Secret”
+* “Mount the Slack secret into Alertmanager”
+* Keep `serviceMonitorSelector` and `podMonitorSelector` open so it sees your ServiceMonitors.
+
+**File: `prometheus-values.yaml`**
+---
+
+## 6️⃣ Helm repo + install command
+
+### Add repo & update (one time)
+
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+```
+
+### Install the stack (the command you gave)
+
+```bash
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  -n monitoring \
+  -f prometheus-values.yaml
+```
+
+---
+
+## 7️⃣ Verify everything + watch Slack
+
+**Check pods**
+
+```bash
+kubectl get pods -n monitoring
+```
+
+You should see something like:
+
+* `monitoring-kube-prometheus-alertmanager-...`
+* `monitoring-kube-prometheus-prometheus-...`
+* `monitoring-grafana-...`
+* `monitoring-kube-state-metrics-...`
+
+**Check Alertmanager logs**
+
+```bash
+kubectl logs -n monitoring deploy/monitoring-kube-prometheus-alertmanager -f
+```
+
+**Check PrometheusRule**
+
+```bash
+kubectl get prometheusrules -n monitoring
+kubectl describe prometheusrule test-alert-rule -n monitoring
+```
+
+After ~1 minute, the **`TestAlwaysFiring`** alert should go **Firing**, and you should see a message in your Slack `#alerts` channel.
 
 ---
 
