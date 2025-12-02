@@ -518,7 +518,7 @@ kubectl logs -n kube-system deployment/aws-load-balancer-controller
 ---
 
 ---
-
+## Some challenges i overcome
 
 > **Challenge:**
 > When I was exposing a Kubernetes service through AWS ALB Ingress, the Ingress resource was created but no Application Load Balancer ever showed up in the AWS console. The Ingress stayed in a “pending” state with no clear error.
@@ -546,7 +546,93 @@ kubectl logs -n kube-system deployment/aws-load-balancer-controller
 > **Lesson learned:**
 > Now, whenever I work with AWS Load Balancer Controller, I always double-check `ingressClassName: alb` first, because a missing or wrong ingress class can waste a lot of troubleshooting time.
 
-
+---
 
 ---
+
+**Challenge:**
+I deployed my Kubernetes Service for the API, and the application was working correctly from a user perspective, but in my monitoring stack (Prometheus/Grafana) I was not seeing any application metrics. The app was healthy, but the dashboards stayed empty, which made it harder to monitor and alert on it.
+
+**Root cause:**
+The issue was in the Service metadata. The Service was missing this label:
+
+```yaml
+metadata:
+  labels:
+    app: cloud-ready-api
+```
+
+My Prometheus/ServiceMonitor configuration was selecting Services by `app=cloud-ready-api`. Because that label was missing on the Service, Prometheus never discovered it, so metrics were never scraped—even though the app itself was running fine.
+
+**How I debugged it:**
+
+* First I verified the app worked:
+
+  * `kubectl get svc -n cloud-api`
+  * Hit the Service/Ingress URL in the browser or via `curl`.
+* Then I checked why Prometheus didn’t see it:
+
+  * `kubectl get svc cloud-ready-api-svc -n cloud-api --show-labels`
+  * I noticed the `app=cloud-ready-api` label was missing on the Service.
+* I compared that with the ServiceMonitor/Prometheus config, which was filtering on `app=cloud-ready-api`.
+
+**Fix:**
+I updated the Service to include the label:
+
+```yaml
+metadata:
+  name: cloud-ready-api-svc
+  namespace: cloud-api
+  labels:
+    app: cloud-ready-api
+```
+
+Re-applied the manifest, and then Prometheus started scraping the metrics, and the Grafana dashboard populated correctly.
+
+**Lesson learned:**
+Now, whenever I set up monitoring in Kubernetes, I always double-check that **Service labels match the label selectors used by Prometheus/ServiceMonitor**. The app can be running and reachable, but without the right label on the Service, you get “no data” in monitoring and waste time troubleshooting the wrong thing.
+
+---
+---
+
+**Challenge:**
+I deployed the kube-prometheus-stack with my own `prometheus-values.yaml`, where I tried to define Alertmanager + Slack settings directly in that file. Prometheus and Grafana came up, but **Alertmanager never got created and no alerts were sent to Slack**, even when my test alert rule should have fired.
+
+**Root cause:**
+I had mixed up **Helm chart values** and the **actual Alertmanager configuration**.
+I put the Slack config inside `prometheus-values.yaml`, but the chart was configured to:
+
+```yaml
+alertmanager:
+  alertmanagerSpec:
+    useExistingSecret: true
+    configSecret: alertmanager-monitoring-config
+```
+
+That means Alertmanager expects its config (including Slack route/receiver) to come from an **external Secret**, not from values directly. Since that secret/config wasn’t properly defined, Alertmanager was never created/initialized as expected.
+
+**How I debugged it:**
+
+* Checked the monitoring namespace:
+
+  * `kubectl get pods -n monitoring` → no Alertmanager pod.
+* Inspected the Helm release:
+
+  * `helm get values monitoring -n monitoring`
+* Reviewed the chart docs and realized that with `useExistingSecret: true`, the Slack config must live in a **separate Alertmanager config file/secret**, not just in `prometheus-values.yaml`.
+
+**Fix:**
+
+1. I **removed the Slack config** block from `prometheus-values.yaml` and kept only the reference to the secret.
+
+2. I created a dedicated `alertmanager-config.yaml` with the proper Alertmanager config + Slack receiver:
+
+3. Applied the config/secret and reinstalled/upgraded the Helm release.
+
+4. After that, **Alertmanager pod came up**, and my test alert started firing to the Slack `#alerts` channel.
+
+**Lesson learned:**
+Now I’m very careful with **how Helm charts expect configuration to be injected**—especially for components like Alertmanager.
+
+
 
