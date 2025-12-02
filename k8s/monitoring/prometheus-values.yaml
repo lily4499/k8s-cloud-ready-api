@@ -2,6 +2,8 @@ alertmanager:
   alertmanagerSpec:
     useExistingSecret: true
     configSecret: alertmanager-monitoring-config
+    secrets:
+      - slack-api-url    # mounts Secret at /etc/alertmanager/secrets
 
 
 prometheus:
@@ -29,6 +31,8 @@ grafana:
     requests:
       cpu: 50m
       memory: 128Mi
+
+
 
 
 
