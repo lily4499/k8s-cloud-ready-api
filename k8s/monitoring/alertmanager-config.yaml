@@ -1,53 +1,27 @@
-global:
-  resolve_timeout: 5m
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-monitoring-config
+  namespace: monitoring
+stringData:
+  alertmanager.yaml: |
+    global:
+      resolve_timeout: 5m
 
-route:
-  receiver: slack-notifications
-  group_by: ['alertname', 'severity']
+    route:
+      receiver: slack-notifications
+      group_by: ['alertname', 'severity']
 
-receivers:
-  - name: slack-notifications
-    slack_configs:
-      - send_resolved: true
-        api_url_file: /etc/alertmanager/secrets/slack_api_url
-        channel: "#alerts"
-        username: "Alertmanager"
-        title: "{{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }})"
-        text: >-
-          *Alert:* {{ .CommonAnnotations.summary }}\n
-          *Description:* {{ .CommonAnnotations.description }}\n
-          *Status:* {{ .Status }}
+    receivers:
+      - name: slack-notifications
+        slack_configs:
+          - send_resolved: true
+            api_url_file: /etc/alertmanager/secrets/slack-api-url/slack_api_url
+            channel: "#alerts"
+            username: "Alertmanager"
+            title: "{{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }})"
+            text: >-
+              *Alert:* {{ .CommonAnnotations.summary }}
+              *Description:* {{ .CommonAnnotations.description }}
+              *Status:* {{ .Status }}
 
-
-
-
-
-
-
-
-
-
-
-# apiVersion: v1
-# kind: Secret
-# metadata:
-#   name: alertmanager-slack-config
-#   namespace: monitoring
-# type: Opaque
-# stringData:
-#   alertmanager.yaml: |
-#     global:
-#       resolve_timeout: 5m
-
-#     route:
-#       receiver: "slack-notifications"
-#       group_by: ['alertname', 'job']
-
-#     receivers:
-#       - name: "slack-notifications"
-#         slack_configs:
-#           - api_url: "https://hooks.slack.com/services/T06PJ84JJMD/********************"
-#             channel: "#alerts"
-#             send_resolved: true
-#             title: "[EKS Alert] {{ .CommonAnnotations.summary }}"
-#             text: "{{ .CommonAnnotations.description }}"
